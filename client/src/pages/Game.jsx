@@ -97,6 +97,11 @@ export default function Game() {
       setMyVote(null);
     });
 
+    socket.on('game:all_played', ({ clues }) => {
+      setClues(clues || []);
+      setPhase('all_played');
+    });
+
     socket.on('game:votes_update', ({ votes }) => {
       setVotes(votes || []);
     });
@@ -335,6 +340,33 @@ export default function Game() {
             </p>
           </div>
         </div>
+      </GameLayout>
+    );
+  }
+
+  // ─── TOUS LES JOUEURS ONT JOUÉ ────────────────────────────────────────────
+  if (phase === 'all_played') {
+    return (
+      <GameLayout>
+        <TurnHeader currentPlayer={null} isMyTurn={false} timeLeft={0} round={round} phase="all_played" />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <PlayersRow
+            players={allPlayers}
+            eliminated={eliminated}
+            currentPlayer={null}
+            myPseudo={user?.pseudo}
+            clues={clues}
+            voteMode={false}
+            votes={[]}
+            myVote={null}
+            onVote={null}
+            characterMap={characterMap}
+          />
+        </div>
+        <div style={{ textAlign: 'center', padding: '12px 16px 24px', color: '#a78bfa', fontWeight: 700, fontSize: 16 }}>
+          Tout le monde a joué — vote dans quelques secondes...
+        </div>
+        <CarouselNavigation total={totalTurns} current={turnIndex} />
       </GameLayout>
     );
   }

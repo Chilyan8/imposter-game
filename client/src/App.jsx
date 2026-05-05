@@ -1,9 +1,10 @@
-import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Home from './pages/Home';
 import Auth from './pages/Auth';
 import Lobby from './pages/Lobby';
 import Game from './pages/Game';
+import Join from './pages/Join';
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth();
@@ -11,16 +12,12 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
-function JoinRedirect() {
-  const { code } = useParams();
-  return <Navigate to={`/lobby/${code}`} replace />;
-}
-
 function AppRoutes() {
   return (
     <Routes>
       <Route path="/auth" element={<Auth />} />
-      <Route path="/join/:code" element={<JoinRedirect />} />
+      {/* Lien d'invitation — accessible sans compte */}
+      <Route path="/join/:code" element={<Join />} />
       <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
       <Route path="/lobby/:code" element={<ProtectedRoute><Lobby /></ProtectedRoute>} />
       <Route path="/game/:code" element={<ProtectedRoute><Game /></ProtectedRoute>} />

@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 
 export default function Home() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const wasKicked = searchParams.get('kicked') === '1';
 
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
@@ -56,6 +58,12 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-8 px-4" style={{ background: 'linear-gradient(160deg, #3b1d46 0%, #2a1433 100%)' }}>
+      {wasKicked && (
+        <div style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 10, padding: '10px 20px', color: '#f87171', fontSize: 14, fontWeight: 600 }}>
+          Tu as été exclu du lobby par l'hôte.
+        </div>
+      )}
+
       <div className="text-center">
         <h1 className="text-5xl font-bold text-white mb-2">Imposter</h1>
         <p className="text-gray-400 text-lg">Le jeu de déduction en temps réel</p>

@@ -162,7 +162,8 @@ const nextTurn = (io, code) => {
 
   state.currentTurnIndex++;
   if (state.currentTurnIndex >= state.turnOrder.length) {
-    startVote(io, code);
+    io.to(code).emit('game:all_played', { clues: state.clues });
+    setTimeout(() => startVote(io, code), 3000);
   } else {
     startTurn(io, code);
   }
