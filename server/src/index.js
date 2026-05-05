@@ -7,6 +7,7 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth');
 const roomRoutes = require('./routes/rooms');
 const lobbySocket = require('./socket/lobby');
+const gameSocket = require('./socket/game');
 
 const app = express();
 const server = http.createServer(app);
@@ -35,6 +36,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/rooms', roomRoutes);
 
 lobbySocket(io);
+gameSocket(io);
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
