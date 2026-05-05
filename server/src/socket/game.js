@@ -50,7 +50,7 @@ const initGame = async (io, code, opts = {}) => {
 
   // Index de personnage stable pour chaque joueur
   const characterMap = {};
-  allDbPlayers.forEach((p, i) => { characterMap[p.pseudo] = i; });
+  allDbPlayers.forEach((p) => { characterMap[p.pseudo] = p.character_index ?? 0; });
 
   const turnOrder = shuffle(activePlayers.map(p => p.pseudo));
 
