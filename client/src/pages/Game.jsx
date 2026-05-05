@@ -13,13 +13,18 @@ export default function Game() {
   const { user } = useAuth();
   const socket = useSocket();
   const navigate = useNavigate();
+  const inputRef = useRef(null);
 
-  const [myRole, setMyRole] = useState(null);
-  const [myWord, setMyWord] = useState(null);
-  const [myTheme, setMyTheme] = useState(null);
-  const [roleRevealed, setRoleRevealed] = useState(false);
-  const [roleConfirmed, setRoleConfirmed] = useState(false);
+  // Joueurs
+  const [allPlayers, setAllPlayers] = useState([]);   // [{pseudo, characterIndex}]
+  const [eliminated, setEliminated] = useState([]);
+  const [characterMap, setCharacterMap] = useState({}); // {pseudo: characterIndex}
 
+  // Secret du joueur local
+  const [mySecret, setMySecret] = useState(null);     // {word, theme, round}
+  const [secretConfirmed, setSecretConfirmed] = useState(false);
+
+  // Jeu
   const [phase, setPhase] = useState('waiting');
   const [round, setRound] = useState(1);
   const [currentPlayer, setCurrentPlayer] = useState(null);
@@ -28,51 +33,48 @@ export default function Game() {
   const [timeLeft, setTimeLeft] = useState(15);
   const [clues, setClues] = useState([]);
   const [clueInput, setClueInput] = useState('');
-  const [allPlayers, setAllPlayers] = useState([]);
-  const [eliminated, setEliminated] = useState([]);
 
-  const [votePlayers, setVotePlayers] = useState([]);
+  // Vote
+  const [votes, setVotes] = useState([]);   // [{voter, target}]
   const [myVote, setMyVote] = useState(null);
-  const [voteCount, setVoteCount] = useState({});
-  const [votesGiven, setVotesGiven] = useState(0);
-  const [totalVoters, setTotalVoters] = useState(0);
 
+  // Résultats
   const [eliminatedInfo, setEliminatedInfo] = useState(null);
   const [endResult, setEndResult] = useState(null);
+  const [tieInfo, setTieInfo] = useState(null);
 
-  const inputRef = useRef(null);
   const isMyTurn = currentPlayer === user?.pseudo && phase === 'playing';
 
   useEffect(() => {
     socket.emit('game:join', { code, pseudo: user?.pseudo });
     socket.emit('game:init', { code });
 
-    socket.on('game:role', ({ role, word, theme, round }) => {
-      setMyRole(role);
-      setMyWord(word);
-      setMyTheme(theme);
-      setRound(round);
-      setRoleRevealed(false);
-      setRoleConfirmed(false);
-      setEliminatedInfo(null);
-      setMyVote(null);
-      setVoteCount({});
-      setClues([]);
+    socket.on('game:players', ({ allPlayers, eliminated, round }) => {
+      setAllPlayers(allPlayers);
+      setEliminated(eliminated || []);
+      setRound(round || 1);
+      const map = {};
+      allPlayers.forEach(p => { map[p.pseudo] = p.characterIndex; });
+      setCharacterMap(map);
     });
 
-    socket.on('game:state', ({ phase, clues, round, currentPlayer, turnIndex, totalTurns, eliminated }) => {
-      setClues(clues || []);
-      setRound(round);
+    socket.on('game:secret', ({ word, theme, round }) => {
+      setMySecret({ word, theme, round });
+      setSecretConfirmed(false);
+      setClues([]);
+      setVotes([]);
+      setMyVote(null);
+      setEliminatedInfo(null);
+      setTieInfo(null);
+    });
+
+    socket.on('game:turn', ({ currentPlayer, turnIndex, totalTurns, timeLeft, clues }) => {
+      setPhase('playing');
       setCurrentPlayer(currentPlayer);
       setTurnIndex(turnIndex);
       setTotalTurns(totalTurns);
-      setEliminated(eliminated || []);
-      if (phase === 'playing' || phase === 'voting') setPhase(phase);
-    });
-
-    socket.on('game:turn_start', ({ currentPlayer, timeLeft }) => {
-      setCurrentPlayer(currentPlayer);
       setTimeLeft(timeLeft);
+      setClues(clues || []);
       setClueInput('');
       if (currentPlayer === user?.pseudo) {
         setTimeout(() => inputRef.current?.focus(), 100);
@@ -81,26 +83,52 @@ export default function Game() {
 
     socket.on('game:timer', ({ timeLeft }) => setTimeLeft(timeLeft));
 
-    socket.on('game:vote_start', ({ players, clues }) => {
+    socket.on('game:clue', ({ pseudo, word }) => {
+      setClues(prev => {
+        if (prev.find(c => c.pseudo === pseudo)) return prev;
+        return [...prev, { pseudo, word }];
+      });
+    });
+
+    socket.on('game:vote_phase', ({ activePlayers, clues }) => {
       setPhase('voting');
-      setVotePlayers(players);
       setClues(clues || []);
-      setTotalVoters(players.length);
-      setVotesGiven(0);
-      setVoteCount({});
+      setVotes([]);
       setMyVote(null);
-      setAllPlayers(players);
     });
 
-    socket.on('game:vote_update', ({ votes, total, voteCount }) => {
-      setVotesGiven(votes);
-      setTotalVoters(total);
-      setVoteCount(voteCount || {});
+    socket.on('game:votes_update', ({ votes }) => {
+      setVotes(votes || []);
     });
 
-    socket.on('game:eliminated', ({ pseudo, role, voteCount }) => {
-      setEliminatedInfo({ pseudo, role, voteCount });
-      setPhase('result');
+    socket.on('game:tie', ({ counts }) => {
+      setTieInfo(counts);
+      setPhase('tie');
+    });
+
+    socket.on('game:restart_turn', ({ clues, eliminated }) => {
+      setPhase('playing');
+      setClues(clues || []);
+      setEliminated(eliminated || []);
+      setTieInfo(null);
+      setVotes([]);
+      setMyVote(null);
+    });
+
+    socket.on('game:eliminated', ({ pseudo, role, counts, eliminated }) => {
+      setEliminatedInfo({ pseudo, role, counts });
+      setEliminated(eliminated || []);
+      setPhase('eliminated');
+    });
+
+    socket.on('game:continue', ({ eliminated, round, clues }) => {
+      setEliminated(eliminated || []);
+      setRound(round);
+      setClues(clues || []);
+      setVotes([]);
+      setMyVote(null);
+      setEliminatedInfo(null);
+      setPhase('playing');
     });
 
     socket.on('game:end', ({ winner, word, players }) => {
@@ -109,23 +137,16 @@ export default function Game() {
     });
 
     return () => {
-      socket.off('game:role');
-      socket.off('game:state');
-      socket.off('game:turn_start');
-      socket.off('game:timer');
-      socket.off('game:vote_start');
-      socket.off('game:vote_update');
-      socket.off('game:eliminated');
-      socket.off('game:end');
+      ['game:players', 'game:secret', 'game:turn', 'game:timer', 'game:clue',
+       'game:vote_phase', 'game:votes_update', 'game:tie', 'game:restart_turn',
+       'game:eliminated', 'game:continue', 'game:end'].forEach(e => socket.off(e));
     };
   }, [code, socket, user?.pseudo]);
 
-  // Synchroniser allPlayers depuis turnOrder
-  useEffect(() => {
-    if (totalTurns > 0 && allPlayers.length === 0) {
-      // sera mis à jour par game:vote_start
-    }
-  }, [totalTurns, allPlayers]);
+  const handleReady = () => {
+    setSecretConfirmed(true);
+    socket.emit('game:ready', { code });
+  };
 
   const handleSubmitClue = (e) => {
     e.preventDefault();
@@ -140,98 +161,74 @@ export default function Game() {
     socket.emit('game:vote', { code, target });
   };
 
-  // ─── RÔLE ────────────────────────────────────────────────────────────────
-  if (!roleConfirmed && myRole) {
+  const myCharacterIndex = characterMap[user?.pseudo] ?? 0;
+
+  // ─── SECRET REVEAL ────────────────────────────────────────────────────────
+  if (mySecret && !secretConfirmed) {
+    const isLegit = !!mySecret.word;
+
     return (
       <GameLayout>
-        <div className="flex-1 flex items-center justify-center px-4">
-          <div className="w-full max-w-xs text-center">
-            <p style={{ color: '#a78bfa', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 24 }}>
-              Round {round}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ width: '100%', maxWidth: 320, textAlign: 'center' }}>
+            <p style={{ color: '#7c3aed', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 20 }}>
+              Round {mySecret.round} — Ton secret
             </p>
 
-            {!roleRevealed ? (
-              <>
-                <div className="flex justify-center mb-6">
-                  <Avatar pseudo={user?.pseudo} size={88} />
-                </div>
-                <h2 style={{ color: '#fff', fontSize: 22, fontWeight: 800, marginBottom: 8 }}>
-                  Ton rôle est prêt
-                </h2>
-                <p style={{ color: '#9ca3af', fontSize: 14, marginBottom: 32 }}>
-                  Assure-toi que personne ne regarde ton écran
-                </p>
-                <button
-                  onClick={() => setRoleRevealed(true)}
-                  style={{
-                    width: '100%',
-                    background: '#7c3aed',
-                    color: '#fff',
-                    fontWeight: 700,
-                    fontSize: 16,
-                    padding: '14px 0',
-                    borderRadius: 14,
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Voir mon rôle
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="flex justify-center mb-5">
-                  <Avatar pseudo={user?.pseudo} size={80} />
-                </div>
-                <div
-                  style={{
-                    background: myRole === 'impostor' ? 'rgba(185,28,28,0.2)' : 'rgba(109,40,217,0.2)',
-                    border: myRole === 'impostor' ? '2px solid #b91c1c' : '2px solid #7c3aed',
-                    borderRadius: 20,
-                    padding: '28px 24px',
-                    marginBottom: 28,
-                  }}
-                >
-                  <div style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    letterSpacing: 3,
-                    textTransform: 'uppercase',
-                    color: myRole === 'impostor' ? '#fca5a5' : '#c4b5fd',
-                    marginBottom: 12,
-                  }}>
-                    {myRole === 'impostor' ? 'Imposteur' : 'Légit'}
-                  </div>
-                  {myRole === 'legit' ? (
-                    <>
-                      <div style={{ color: '#fff', fontSize: 36, fontWeight: 900, marginBottom: 8 }}>{myWord}</div>
-                      <p style={{ color: '#c4b5fd', fontSize: 13 }}>C'est ton mot secret. Aide les légits sans le révéler.</p>
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Thème : {myTheme}</div>
-                      <p style={{ color: '#fca5a5', fontSize: 13 }}>Tu n'as PAS le mot exact. Blends-toi !</p>
-                    </>
-                  )}
-                </div>
-                <button
-                  onClick={() => setRoleConfirmed(true)}
-                  style={{
-                    width: '100%',
-                    background: '#7c3aed',
-                    color: '#fff',
-                    fontWeight: 700,
-                    fontSize: 16,
-                    padding: '14px 0',
-                    borderRadius: 14,
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  J'ai mémorisé — Go !
-                </button>
-              </>
-            )}
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+              <Avatar characterIndex={myCharacterIndex} pseudo={user?.pseudo} size={90} />
+            </div>
+
+            <div style={{
+              background: isLegit ? 'rgba(109,40,217,0.2)' : 'rgba(42,20,51,0.8)',
+              border: isLegit ? '2px solid #7c3aed' : '2px solid rgba(255,255,255,0.1)',
+              borderRadius: 20,
+              padding: '28px 24px',
+              marginBottom: 24,
+            }}>
+              {isLegit ? (
+                <>
+                  <p style={{ color: '#a78bfa', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 12 }}>
+                    Ton mot secret
+                  </p>
+                  <p style={{ color: '#fff', fontSize: 38, fontWeight: 900, marginBottom: 8 }}>
+                    {mySecret.word}
+                  </p>
+                  <p style={{ color: '#c4b5fd', fontSize: 13 }}>
+                    Donne des mots en rapport sans le révéler directement.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p style={{ color: '#9ca3af', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 12 }}>
+                    Ton indice
+                  </p>
+                  <p style={{ color: '#fff', fontSize: 26, fontWeight: 800, marginBottom: 8 }}>
+                    {mySecret.theme}
+                  </p>
+                  <p style={{ color: '#9ca3af', fontSize: 13 }}>
+                    Blends-toi parmi les autres sans te faire repérer.
+                  </p>
+                </>
+              )}
+            </div>
+
+            <button
+              onClick={handleReady}
+              style={{
+                width: '100%',
+                background: '#7c3aed',
+                color: '#fff',
+                fontWeight: 800,
+                fontSize: 16,
+                padding: '15px 0',
+                borderRadius: 14,
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              J'ai mémorisé — Prêt !
+            </button>
           </div>
         </div>
       </GameLayout>
@@ -241,45 +238,41 @@ export default function Game() {
   // ─── FIN DE PARTIE ────────────────────────────────────────────────────────
   if (phase === 'end' && endResult) {
     const isWinner =
-      (endResult.winner === 'legit' && myRole === 'legit') ||
-      (endResult.winner === 'impostor' && myRole === 'impostor');
+      (endResult.winner === 'legit' && mySecret?.word) ||
+      (endResult.winner === 'impostor' && !mySecret?.word);
 
     return (
       <GameLayout>
-        <div className="flex-1 flex items-center justify-center px-4">
-          <div className="w-full max-w-sm text-center">
-            <div style={{ fontSize: 64, marginBottom: 8 }}>{isWinner ? '🏆' : '💀'}</div>
-            <div style={{ color: isWinner ? '#4ade80' : '#f87171', fontSize: 42, fontWeight: 900, marginBottom: 4 }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ width: '100%', maxWidth: 360, textAlign: 'center' }}>
+            <div style={{ fontSize: 56, marginBottom: 8 }}>{isWinner ? '🏆' : '💀'}</div>
+            <p style={{ color: isWinner ? '#4ade80' : '#f87171', fontSize: 40, fontWeight: 900, marginBottom: 4 }}>
               {isWinner ? 'Victoire !' : 'Défaite'}
-            </div>
-            <p style={{ color: '#d1d5db', marginBottom: 4 }}>
+            </p>
+            <p style={{ color: '#9ca3af', marginBottom: 4 }}>
               Les <strong style={{ color: '#fff' }}>
                 {endResult.winner === 'legit' ? 'Légits' : 'Imposteurs'}
               </strong> ont gagné
             </p>
-            <p style={{ color: '#9ca3af', fontSize: 14, marginBottom: 28 }}>
+            <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 24 }}>
               Le mot était : <strong style={{ color: '#a78bfa' }}>{endResult.word}</strong>
             </p>
 
-            <div style={{ background: 'rgba(42,20,51,0.8)', borderRadius: 16, padding: 16, marginBottom: 28 }}>
-              {endResult.players.map((p) => (
-                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Avatar pseudo={p.pseudo} size={32} />
-                    <span style={{ color: '#fff', fontWeight: 600 }}>{p.pseudo}</span>
+            <div style={{ background: 'rgba(42,20,51,0.8)', borderRadius: 16, padding: 16, marginBottom: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+                {endResult.players.map((p) => (
+                  <div key={p.pseudo} style={{ textAlign: 'center', opacity: p.eliminated ? 0.4 : 1 }}>
+                    <Avatar characterIndex={p.characterIndex} pseudo={p.pseudo} size={44} />
+                    <p style={{ color: '#fff', fontSize: 11, fontWeight: 700, marginTop: 4 }}>{p.pseudo}</p>
+                    <p style={{
+                      fontSize: 10,
+                      color: p.role === 'impostor' ? '#fca5a5' : '#c4b5fd',
+                    }}>
+                      {p.role === 'impostor' ? 'Imposteur' : 'Légit'}
+                    </p>
                   </div>
-                  <span style={{
-                    fontSize: 12,
-                    padding: '3px 10px',
-                    borderRadius: 99,
-                    background: p.role === 'impostor' ? 'rgba(185,28,28,0.3)' : 'rgba(109,40,217,0.3)',
-                    color: p.role === 'impostor' ? '#fca5a5' : '#c4b5fd',
-                    fontWeight: 600,
-                  }}>
-                    {p.role === 'impostor' ? 'Imposteur' : 'Légit'}
-                  </span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
 
             <button
@@ -288,7 +281,7 @@ export default function Game() {
                 width: '100%',
                 background: '#7c3aed',
                 color: '#fff',
-                fontWeight: 700,
+                fontWeight: 800,
                 fontSize: 16,
                 padding: '14px 0',
                 borderRadius: 14,
@@ -305,18 +298,22 @@ export default function Game() {
   }
 
   // ─── RÉSULTAT ÉLIMINATION ─────────────────────────────────────────────────
-  if (phase === 'result' && eliminatedInfo) {
+  if (phase === 'eliminated' && eliminatedInfo) {
     return (
       <GameLayout>
-        <div className="flex-1 flex items-center justify-center px-4">
-          <div className="text-center">
-            <p style={{ color: '#9ca3af', fontSize: 13, marginBottom: 20, letterSpacing: 2, textTransform: 'uppercase' }}>
-              Résultat du vote
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ color: '#9ca3af', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 20 }}>
+              Éliminé
             </p>
-            <div className="flex justify-center mb-4">
-              <Avatar pseudo={eliminatedInfo.pseudo} size={88} />
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+              <Avatar
+                characterIndex={characterMap[eliminatedInfo.pseudo] ?? 0}
+                pseudo={eliminatedInfo.pseudo}
+                size={88}
+              />
             </div>
-            <p style={{ color: '#fff', fontSize: 28, fontWeight: 900, marginBottom: 10 }}>
+            <p style={{ color: '#fff', fontSize: 28, fontWeight: 900, marginBottom: 8 }}>
               {eliminatedInfo.pseudo}
             </p>
             <span style={{
@@ -331,8 +328,10 @@ export default function Game() {
             }}>
               {eliminatedInfo.role === 'impostor' ? '🔴 Imposteur' : '🟣 Légit'}
             </span>
-            <p style={{ color: '#6b7280', fontSize: 14 }} className="animate-pulse">
-              Nouveau round dans quelques secondes...
+            <p style={{ color: '#6b7280', fontSize: 14 }}>
+              {eliminatedInfo.role === 'impostor'
+                ? 'La partie se termine...'
+                : 'Le jeu continue avec le même mot...'}
             </p>
           </div>
         </div>
@@ -340,99 +339,23 @@ export default function Game() {
     );
   }
 
-  // ─── VOTE ─────────────────────────────────────────────────────────────────
-  if (phase === 'voting') {
+  // ─── ÉGALITÉ ──────────────────────────────────────────────────────────────
+  if (phase === 'tie') {
     return (
       <GameLayout>
-        <div className="flex-1 flex flex-col max-w-lg mx-auto w-full px-4 py-6">
-          <div className="text-center mb-5">
-            <p style={{ color: '#a78bfa', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 6 }}>
-              Round {round}
-            </p>
-            <h2 style={{ color: '#fff', fontSize: 26, fontWeight: 900, marginBottom: 4 }}>
-              Qui est l'imposteur ?
-            </h2>
-            <p style={{ color: '#9ca3af', fontSize: 13 }}>
-              {votesGiven} / {totalVoters} votes
-            </p>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 52, marginBottom: 12 }}>🤝</div>
+            <p style={{ color: '#fff', fontSize: 26, fontWeight: 900, marginBottom: 8 }}>Égalité !</p>
+            <p style={{ color: '#9ca3af', fontSize: 14 }}>On refait un tour...</p>
           </div>
-
-          {/* Avatars joueurs */}
-          <div className="flex justify-center gap-3 mb-5 flex-wrap">
-            {votePlayers.map((p) => (
-              <div key={p} style={{ textAlign: 'center', opacity: myVote === p ? 1 : 0.7 }}>
-                <Avatar pseudo={p} size={44} />
-              </div>
-            ))}
-          </div>
-
-          {/* Récap mots */}
-          <div style={{ background: 'rgba(42,20,51,0.7)', borderRadius: 14, padding: 14, marginBottom: 16, border: '1px solid rgba(139,92,246,0.15)' }}>
-            <p style={{ color: '#6b7280', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10 }}>
-              Mots donnés
-            </p>
-            {clues.map((c, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <span style={{ color: '#9ca3af', fontSize: 14 }}>{c.pseudo}</span>
-                <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{c.word}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Boutons vote */}
-          <div className="flex flex-col gap-2">
-            {votePlayers
-              .filter((p) => p !== user?.pseudo)
-              .map((p) => (
-                <button
-                  key={p}
-                  onClick={() => handleVote(p)}
-                  disabled={!!myVote}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '14px 18px',
-                    borderRadius: 14,
-                    border: myVote === p ? '2px solid #8b5cf6' : '1px solid rgba(255,255,255,0.08)',
-                    background: myVote === p ? 'rgba(139,92,246,0.25)' : 'rgba(42,20,51,0.7)',
-                    color: myVote && myVote !== p ? '#4b5563' : '#fff',
-                    fontWeight: 700,
-                    fontSize: 16,
-                    cursor: myVote ? 'not-allowed' : 'pointer',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <Avatar pseudo={p} size={32} />
-                    <span>{p}</span>
-                  </div>
-                  {voteCount[p] ? (
-                    <span style={{ fontSize: 12, background: 'rgba(139,92,246,0.3)', color: '#c4b5fd', padding: '3px 10px', borderRadius: 99 }}>
-                      {voteCount[p]} vote{voteCount[p] > 1 ? 's' : ''}
-                    </span>
-                  ) : null}
-                </button>
-              ))}
-          </div>
-
-          {!myVote && (
-            <p style={{ color: '#4b5563', fontSize: 12, textAlign: 'center', marginTop: 12 }}>
-              Tu ne peux pas voter pour toi-même
-            </p>
-          )}
         </div>
       </GameLayout>
     );
   }
 
-  // ─── JEU PRINCIPAL ────────────────────────────────────────────────────────
-  // Construire la liste des joueurs depuis le turnOrder
-  const turnOrderPseudos = allPlayers.length > 0
-    ? allPlayers
-    : clues.map((c) => c.pseudo).concat(
-        currentPlayer && !clues.find((c) => c.pseudo === currentPlayer) ? [currentPlayer] : []
-      );
+  // ─── JEU PRINCIPAL (playing + voting) ────────────────────────────────────
+  const voteMode = phase === 'voting';
 
   return (
     <GameLayout>
@@ -442,52 +365,60 @@ export default function Game() {
         isMyTurn={isMyTurn}
         timeLeft={timeLeft}
         round={round}
+        phase={phase}
       />
 
-      {/* Zone joueurs */}
-      <div className="flex-1 flex flex-col justify-center">
+      {/* Rangée des joueurs */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <PlayersRow
-          players={turnOrderPseudos.length > 0 ? turnOrderPseudos : (currentPlayer ? [currentPlayer] : [])}
+          players={allPlayers}
+          eliminated={eliminated}
           currentPlayer={currentPlayer}
           myPseudo={user?.pseudo}
           clues={clues}
-          eliminated={eliminated}
+          voteMode={voteMode}
+          votes={votes}
+          myVote={myVote}
+          onVote={handleVote}
+          characterMap={characterMap}
         />
       </div>
 
-      {/* Zone mon rôle + input */}
-      <div style={{ padding: '0 16px 16px' }}>
-        {/* Rappel rôle */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'rgba(42,20,51,0.8)',
-          border: myRole === 'impostor' ? '1px solid rgba(185,28,28,0.4)' : '1px solid rgba(139,92,246,0.25)',
-          borderRadius: 12,
-          padding: '10px 16px',
-          marginBottom: 12,
-        }}>
-          <div>
-            <span style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>
-              {myRole === 'impostor' ? 'Imposteur' : 'Légit'}
-            </span>
-            <p style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>
-              {myRole === 'legit' ? myWord : `Thème : ${myTheme}`}
-            </p>
+      {/* Zone basse */}
+      <div style={{ padding: '0 16px 12px' }}>
+        {/* Rappel secret */}
+        {mySecret && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'rgba(42,20,51,0.8)',
+            border: mySecret.word ? '1px solid rgba(139,92,246,0.3)' : '1px solid rgba(255,255,255,0.07)',
+            borderRadius: 12,
+            padding: '10px 16px',
+            marginBottom: 10,
+          }}>
+            <div>
+              <p style={{ color: '#6b7280', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 }}>
+                {mySecret.word ? 'Mon mot secret' : 'Mon indice'}
+              </p>
+              <p style={{ color: '#fff', fontWeight: 800, fontSize: 17 }}>
+                {mySecret.word ?? mySecret.theme}
+              </p>
+            </div>
+            <Avatar characterIndex={myCharacterIndex} pseudo={user?.pseudo} size={36} />
           </div>
-          <span style={{ fontSize: 22 }}>{myRole === 'impostor' ? '🔴' : '🟣'}</span>
-        </div>
+        )}
 
-        {/* Input si c'est mon tour */}
+        {/* Input mot — seulement si c'est mon tour */}
         {isMyTurn && (
           <form onSubmit={handleSubmitClue} style={{ display: 'flex', gap: 10 }}>
             <input
               ref={inputRef}
               type="text"
               value={clueInput}
-              onChange={(e) => setClueInput(e.target.value)}
-              placeholder="Tape ton mot..."
+              onChange={e => setClueInput(e.target.value)}
+              placeholder="Écris ton mot..."
               maxLength={50}
               autoComplete="off"
               style={{
@@ -506,25 +437,25 @@ export default function Game() {
               type="submit"
               disabled={!clueInput.trim()}
               style={{
-                background: clueInput.trim() ? '#7c3aed' : 'rgba(124,58,237,0.3)',
+                background: clueInput.trim() ? '#7c3aed' : 'rgba(124,58,237,0.25)',
                 color: '#fff',
-                fontWeight: 800,
-                fontSize: 20,
-                padding: '0 22px',
+                fontWeight: 900,
+                fontSize: 22,
+                padding: '0 20px',
                 borderRadius: 14,
                 border: 'none',
                 cursor: clueInput.trim() ? 'pointer' : 'not-allowed',
                 transition: 'background 0.15s',
               }}
-            >
-              ✓
-            </button>
+            >✓</button>
           </form>
         )}
 
+        {/* Attente tour */}
         {!isMyTurn && phase === 'playing' && (
           <div style={{
             background: 'rgba(42,20,51,0.5)',
+            border: '1px solid rgba(255,255,255,0.05)',
             borderRadius: 12,
             padding: '12px 16px',
             textAlign: 'center',
@@ -534,10 +465,38 @@ export default function Game() {
             En attente de <strong style={{ color: '#a78bfa' }}>{currentPlayer}</strong>...
           </div>
         )}
+
+        {/* Message vote */}
+        {voteMode && !myVote && (
+          <div style={{
+            background: 'rgba(42,20,51,0.5)',
+            border: '1px solid rgba(139,92,246,0.2)',
+            borderRadius: 12,
+            padding: '12px 16px',
+            textAlign: 'center',
+            color: '#a78bfa',
+            fontSize: 14,
+            fontWeight: 600,
+          }}>
+            Clique sur "Voter" sous un joueur pour voter
+          </div>
+        )}
+        {voteMode && myVote && (
+          <div style={{
+            background: 'rgba(42,20,51,0.5)',
+            borderRadius: 12,
+            padding: '12px 16px',
+            textAlign: 'center',
+            color: '#6b7280',
+            fontSize: 13,
+          }}>
+            Tu as voté contre <strong style={{ color: '#fff' }}>{myVote}</strong>. En attente des autres...
+          </div>
+        )}
       </div>
 
-      {/* Navigation bas */}
-      <CarouselNavigation total={totalTurns || 1} current={turnIndex} />
+      {/* Navigation dots */}
+      <CarouselNavigation total={totalTurns} current={turnIndex} />
     </GameLayout>
   );
 }

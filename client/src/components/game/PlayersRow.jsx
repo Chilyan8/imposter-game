@@ -1,50 +1,86 @@
 import { useRef } from 'react';
 import PlayerCard from './PlayerCard';
 
-export default function PlayersRow({ players, currentPlayer, myPseudo, clues, eliminated }) {
+export default function PlayersRow({
+  players,       // [{pseudo, characterIndex}]
+  eliminated,
+  currentPlayer,
+  myPseudo,
+  clues,
+  // vote
+  voteMode,
+  votes,         // [{voter, target}]
+  myVote,
+  onVote,
+  characterMap,  // {pseudo: characterIndex}
+}) {
   const rowRef = useRef(null);
 
   const scroll = (dir) => {
-    if (rowRef.current) {
-      rowRef.current.scrollBy({ left: dir * 160, behavior: 'smooth' });
-    }
+    rowRef.current?.scrollBy({ left: dir * 160, behavior: 'smooth' });
   };
 
+  const activePlayers = players.filter(p => !eliminated.includes(p.pseudo));
+
   return (
-    <div className="relative flex items-center w-full px-2">
+    <div style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '0 8px' }}>
       {/* Flèche gauche */}
       <button
         onClick={() => scroll(-1)}
-        className="flex-shrink-0 z-10 flex items-center justify-center rounded-full transition-colors mr-2"
         style={{
-          width: 36,
-          height: 36,
+          flexShrink: 0,
+          width: 32,
+          height: 32,
+          borderRadius: '50%',
           background: 'rgba(42,20,51,0.8)',
           border: '1px solid rgba(139,92,246,0.3)',
           color: '#a78bfa',
-          fontSize: 18,
+          fontSize: 20,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginRight: 6,
         }}
-        aria-label="Précédent"
-      >
-        ‹
-      </button>
+      >‹</button>
 
-      {/* Ligne des joueurs */}
+      {/* Rangée */}
       <div
         ref={rowRef}
-        className="flex flex-row gap-4 overflow-x-auto scrollbar-hide py-4 flex-1"
-        style={{ justifyContent: players.length <= 4 ? 'center' : 'flex-start' }}
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          gap: 12,
+          overflowX: 'auto',
+          padding: '16px 4px',
+          flex: 1,
+          justifyContent: activePlayers.length <= 4 ? 'center' : 'flex-start',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+        }}
       >
-        {players.map((pseudo) => {
-          const clue = clues.find((c) => c.pseudo === pseudo);
+        {players.map((p) => {
+          const clue = clues.find(c => c.pseudo === p.pseudo);
+          const votersForThisPlayer = voteMode
+            ? votes
+                .filter(v => v.target === p.pseudo)
+                .map(v => ({ pseudo: v.voter, characterIndex: characterMap[v.voter] ?? 0 }))
+            : [];
+
           return (
             <PlayerCard
-              key={pseudo}
-              pseudo={pseudo}
-              word={clue?.word || null}
-              isActive={currentPlayer === pseudo}
-              isCurrentUser={myPseudo === pseudo}
-              isEliminated={eliminated?.includes(pseudo)}
+              key={p.pseudo}
+              pseudo={p.pseudo}
+              characterIndex={p.characterIndex}
+              word={clue ? (clue.word ?? '⏱') : null}
+              isActive={currentPlayer === p.pseudo && !voteMode}
+              isMe={p.pseudo === myPseudo}
+              isEliminated={eliminated.includes(p.pseudo)}
+              voteMode={voteMode}
+              voters={votersForThisPlayer}
+              totalActive={activePlayers.length}
+              hasVoted={!!myVote}
+              onVote={() => onVote?.(p.pseudo)}
             />
           );
         })}
@@ -53,19 +89,22 @@ export default function PlayersRow({ players, currentPlayer, myPseudo, clues, el
       {/* Flèche droite */}
       <button
         onClick={() => scroll(1)}
-        className="flex-shrink-0 z-10 flex items-center justify-center rounded-full transition-colors ml-2"
         style={{
-          width: 36,
-          height: 36,
+          flexShrink: 0,
+          width: 32,
+          height: 32,
+          borderRadius: '50%',
           background: 'rgba(42,20,51,0.8)',
           border: '1px solid rgba(139,92,246,0.3)',
           color: '#a78bfa',
-          fontSize: 18,
+          fontSize: 20,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginLeft: 6,
         }}
-        aria-label="Suivant"
-      >
-        ›
-      </button>
+      >›</button>
     </div>
   );
 }

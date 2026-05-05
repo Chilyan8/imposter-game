@@ -1,54 +1,63 @@
-export default function TurnHeader({ currentPlayer, isMyTurn, timeLeft, round }) {
+export default function TurnHeader({ currentPlayer, isMyTurn, timeLeft, round, phase }) {
+  const label = phase === 'voting'
+    ? 'Phase de vote'
+    : isMyTurn
+    ? '🎯 C\'est ton tour !'
+    : `Au tour de : ${currentPlayer || '...'}`;
+
   return (
-    <div className="flex flex-col items-center gap-1 pt-6 pb-2">
-      <span style={{ color: '#a78bfa', fontSize: 12, fontWeight: 500, letterSpacing: 2, textTransform: 'uppercase' }}>
+    <div style={{ textAlign: 'center', paddingTop: 20, paddingBottom: 8 }}>
+      <span style={{
+        color: '#7c3aed',
+        fontSize: 11,
+        fontWeight: 600,
+        letterSpacing: 3,
+        textTransform: 'uppercase',
+        display: 'block',
+        marginBottom: 6,
+      }}>
         Round {round}
       </span>
-      <div className="flex items-center gap-2 mt-1">
-        <span style={{ color: '#d1d5db', fontSize: 18, fontWeight: 500 }}>
-          Au tour de :
-        </span>
-        <span style={{
-          color: isMyTurn ? '#a78bfa' : '#ffffff',
-          fontSize: 22,
-          fontWeight: 800,
-          letterSpacing: -0.5,
-        }}>
-          {isMyTurn ? 'toi !' : currentPlayer}
-        </span>
-      </div>
 
-      {/* Timer */}
-      <div className="mt-2 flex items-center gap-2">
-        <div
-          style={{
-            width: 180,
+      <span style={{
+        color: isMyTurn ? '#c4b5fd' : '#ffffff',
+        fontSize: 20,
+        fontWeight: 800,
+        display: 'block',
+        marginBottom: phase === 'voting' ? 0 : 10,
+      }}>
+        {label}
+      </span>
+
+      {/* Barre timer — seulement pendant les tours */}
+      {phase === 'playing' && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <div style={{
+            width: 160,
             height: 6,
             background: 'rgba(255,255,255,0.1)',
             borderRadius: 99,
             overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
+          }}>
+            <div style={{
               width: `${(timeLeft / 15) * 100}%`,
               height: '100%',
-              background: timeLeft <= 5 ? '#f87171' : timeLeft <= 10 ? '#fb923c' : '#8b5cf6',
+              background: timeLeft <= 5 ? '#ef4444' : timeLeft <= 10 ? '#f97316' : '#8b5cf6',
               borderRadius: 99,
               transition: 'width 0.9s linear, background 0.3s',
-            }}
-          />
+            }} />
+          </div>
+          <span style={{
+            color: timeLeft <= 5 ? '#ef4444' : '#9ca3af',
+            fontSize: 13,
+            fontWeight: 700,
+            minWidth: 30,
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {timeLeft}s
+          </span>
         </div>
-        <span style={{
-          color: timeLeft <= 5 ? '#f87171' : '#d1d5db',
-          fontSize: 14,
-          fontWeight: 700,
-          fontVariantNumeric: 'tabular-nums',
-          minWidth: 28,
-        }}>
-          {timeLeft}s
-        </span>
-      </div>
+      )}
     </div>
   );
 }
