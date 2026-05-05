@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../lib/api';
 
 export default function Home() {
   const { user, logout } = useAuth();
@@ -23,7 +24,7 @@ export default function Home() {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch('/api/rooms/create', {
+      const res = await apiFetch('/api/rooms/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
