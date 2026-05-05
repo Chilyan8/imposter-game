@@ -1,7 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Home from './pages/Home';
 import Auth from './pages/Auth';
+import Lobby from './pages/Lobby';
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth();
@@ -9,15 +10,29 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+function JoinRedirect() {
+  const { code } = useParams();
+  return <Navigate to={`/lobby/${code}`} replace />;
+}
+
 function AppRoutes() {
   return (
     <Routes>
       <Route path="/auth" element={<Auth />} />
+      <Route path="/join/:code" element={<JoinRedirect />} />
       <Route
         path="/"
         element={
           <ProtectedRoute>
             <Home />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/lobby/:code"
+        element={
+          <ProtectedRoute>
+            <Lobby />
           </ProtectedRoute>
         }
       />

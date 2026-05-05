@@ -5,6 +5,8 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 
 const authRoutes = require('./routes/auth');
+const roomRoutes = require('./routes/rooms');
+const lobbySocket = require('./socket/lobby');
 
 const app = express();
 const server = http.createServer(app);
@@ -30,14 +32,9 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/rooms', roomRoutes);
 
-io.on('connection', (socket) => {
-  console.log('Joueur connecté:', socket.id);
-
-  socket.on('disconnect', () => {
-    console.log('Joueur déconnecté:', socket.id);
-  });
-});
+lobbySocket(io);
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
