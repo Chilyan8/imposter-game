@@ -4,6 +4,8 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 
+const authRoutes = require('./routes/auth');
+
 const app = express();
 const server = http.createServer(app);
 
@@ -26,6 +28,8 @@ app.use(express.json());
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
+
+app.use('/api/auth', authRoutes);
 
 io.on('connection', (socket) => {
   console.log('Joueur connecté:', socket.id);
