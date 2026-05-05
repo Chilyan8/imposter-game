@@ -7,12 +7,20 @@
 }
 
 body {
-  background-color: #0f0f14;
-  color: #f3f4f6;
+  background-color: #3b1d46;
+  color: #ffffff;
   font-family: system-ui, 'Segoe UI', sans-serif;
   min-height: 100vh;
 }
 
 #root {
   min-height: 100vh;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

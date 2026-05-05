@@ -55,7 +55,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-8 px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center gap-8 px-4" style={{ background: 'linear-gradient(160deg, #3b1d46 0%, #2a1433 100%)' }}>
       <div className="text-center">
         <h1 className="text-5xl font-bold text-white mb-2">Imposter</h1>
         <p className="text-gray-400 text-lg">Le jeu de déduction en temps réel</p>

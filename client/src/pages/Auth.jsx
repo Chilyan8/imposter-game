@@ -57,7 +57,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'linear-gradient(160deg, #3b1d46 0%, #2a1433 100%)' }}>
       <div className="w-full max-w-sm bg-gray-900 rounded-xl p-8 border border-gray-800">
         <h1 className="text-3xl font-bold text-white text-center mb-6">Imposter</h1>
 

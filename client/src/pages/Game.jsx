@@ -2,6 +2,11 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../hooks/useSocket';
+import GameLayout from '../components/game/GameLayout';
+import TurnHeader from '../components/game/TurnHeader';
+import PlayersRow from '../components/game/PlayersRow';
+import CarouselNavigation from '../components/game/CarouselNavigation';
+import Avatar from '../components/game/Avatar';
 
 export default function Game() {
   const { code } = useParams();
@@ -9,14 +14,12 @@ export default function Game() {
   const socket = useSocket();
   const navigate = useNavigate();
 
-  // Rôle du joueur local
   const [myRole, setMyRole] = useState(null);
   const [myWord, setMyWord] = useState(null);
   const [myTheme, setMyTheme] = useState(null);
   const [roleRevealed, setRoleRevealed] = useState(false);
   const [roleConfirmed, setRoleConfirmed] = useState(false);
 
-  // État de la partie
   const [phase, setPhase] = useState('waiting');
   const [round, setRound] = useState(1);
   const [currentPlayer, setCurrentPlayer] = useState(null);
@@ -25,15 +28,15 @@ export default function Game() {
   const [timeLeft, setTimeLeft] = useState(15);
   const [clues, setClues] = useState([]);
   const [clueInput, setClueInput] = useState('');
+  const [allPlayers, setAllPlayers] = useState([]);
+  const [eliminated, setEliminated] = useState([]);
 
-  // Vote
   const [votePlayers, setVotePlayers] = useState([]);
   const [myVote, setMyVote] = useState(null);
   const [voteCount, setVoteCount] = useState({});
   const [votesGiven, setVotesGiven] = useState(0);
   const [totalVoters, setTotalVoters] = useState(0);
 
-  // Résultats
   const [eliminatedInfo, setEliminatedInfo] = useState(null);
   const [endResult, setEndResult] = useState(null);
 
@@ -54,14 +57,16 @@ export default function Game() {
       setEliminatedInfo(null);
       setMyVote(null);
       setVoteCount({});
+      setClues([]);
     });
 
-    socket.on('game:state', ({ phase, clues, round, currentPlayer, turnIndex, totalTurns }) => {
+    socket.on('game:state', ({ phase, clues, round, currentPlayer, turnIndex, totalTurns, eliminated }) => {
       setClues(clues || []);
       setRound(round);
       setCurrentPlayer(currentPlayer);
       setTurnIndex(turnIndex);
       setTotalTurns(totalTurns);
+      setEliminated(eliminated || []);
       if (phase === 'playing' || phase === 'voting') setPhase(phase);
     });
 
@@ -74,9 +79,7 @@ export default function Game() {
       }
     });
 
-    socket.on('game:timer', ({ timeLeft }) => {
-      setTimeLeft(timeLeft);
-    });
+    socket.on('game:timer', ({ timeLeft }) => setTimeLeft(timeLeft));
 
     socket.on('game:vote_start', ({ players, clues }) => {
       setPhase('voting');
@@ -86,6 +89,7 @@ export default function Game() {
       setVotesGiven(0);
       setVoteCount({});
       setMyVote(null);
+      setAllPlayers(players);
     });
 
     socket.on('game:vote_update', ({ votes, total, voteCount }) => {
@@ -116,6 +120,13 @@ export default function Game() {
     };
   }, [code, socket, user?.pseudo]);
 
+  // Synchroniser allPlayers depuis turnOrder
+  useEffect(() => {
+    if (totalTurns > 0 && allPlayers.length === 0) {
+      // sera mis à jour par game:vote_start
+    }
+  }, [totalTurns, allPlayers]);
+
   const handleSubmitClue = (e) => {
     e.preventDefault();
     if (!clueInput.trim() || !isMyTurn) return;
@@ -129,293 +140,404 @@ export default function Game() {
     socket.emit('game:vote', { code, target });
   };
 
-  // ─── ÉCRAN : Révélation du rôle ───────────────────────────────────────────
+  // ─── RÔLE ────────────────────────────────────────────────────────────────
   if (!roleConfirmed && myRole) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 bg-[#0f0f14]">
-        <div className="w-full max-w-sm text-center">
-          <p className="text-gray-500 text-sm mb-6">Round {round}</p>
+      <GameLayout>
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="w-full max-w-xs text-center">
+            <p style={{ color: '#a78bfa', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 24 }}>
+              Round {round}
+            </p>
 
-          {!roleRevealed ? (
-            <>
-              <div className="w-24 h-24 rounded-full bg-gray-800 border-2 border-gray-700 mx-auto mb-8 flex items-center justify-center text-4xl">
-                🎭
-              </div>
-              <h2 className="text-white text-xl font-semibold mb-2">Ton rôle est prêt</h2>
-              <p className="text-gray-400 text-sm mb-8">Assure-toi que personne ne regarde ton écran</p>
-              <button
-                onClick={() => setRoleRevealed(true)}
-                className="w-full bg-violet-700 hover:bg-violet-500 text-white font-semibold py-4 rounded-xl transition-colors"
-              >
-                Voir mon rôle
-              </button>
-            </>
-          ) : (
-            <>
-              {myRole === 'legit' ? (
-                <div className="bg-violet-950 border border-violet-700 rounded-2xl p-8 mb-8">
-                  <div className="text-violet-400 text-sm font-medium mb-3 uppercase tracking-widest">Légit</div>
-                  <div className="text-white text-4xl font-bold mb-2">{myWord}</div>
-                  <p className="text-violet-300 text-sm">C'est ton mot secret. Aide les autres à trouver l'imposteur sans le révéler.</p>
+            {!roleRevealed ? (
+              <>
+                <div className="flex justify-center mb-6">
+                  <Avatar pseudo={user?.pseudo} size={88} />
                 </div>
-              ) : (
-                <div className="bg-red-950 border border-red-700 rounded-2xl p-8 mb-8">
-                  <div className="text-red-400 text-sm font-medium mb-3 uppercase tracking-widest">Imposteur</div>
-                  <div className="text-white text-2xl font-bold mb-1">Thème : {myTheme}</div>
-                  <p className="text-red-300 text-sm mt-3">Tu n'as PAS le mot exact. Blends-toi sans te faire repérer.</p>
+                <h2 style={{ color: '#fff', fontSize: 22, fontWeight: 800, marginBottom: 8 }}>
+                  Ton rôle est prêt
+                </h2>
+                <p style={{ color: '#9ca3af', fontSize: 14, marginBottom: 32 }}>
+                  Assure-toi que personne ne regarde ton écran
+                </p>
+                <button
+                  onClick={() => setRoleRevealed(true)}
+                  style={{
+                    width: '100%',
+                    background: '#7c3aed',
+                    color: '#fff',
+                    fontWeight: 700,
+                    fontSize: 16,
+                    padding: '14px 0',
+                    borderRadius: 14,
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Voir mon rôle
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex justify-center mb-5">
+                  <Avatar pseudo={user?.pseudo} size={80} />
                 </div>
-              )}
-              <button
-                onClick={() => setRoleConfirmed(true)}
-                className="w-full bg-violet-700 hover:bg-violet-500 text-white font-semibold py-4 rounded-xl transition-colors"
-              >
-                J'ai mémorisé, c'est parti !
-              </button>
-            </>
-          )}
+                <div
+                  style={{
+                    background: myRole === 'impostor' ? 'rgba(185,28,28,0.2)' : 'rgba(109,40,217,0.2)',
+                    border: myRole === 'impostor' ? '2px solid #b91c1c' : '2px solid #7c3aed',
+                    borderRadius: 20,
+                    padding: '28px 24px',
+                    marginBottom: 28,
+                  }}
+                >
+                  <div style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    letterSpacing: 3,
+                    textTransform: 'uppercase',
+                    color: myRole === 'impostor' ? '#fca5a5' : '#c4b5fd',
+                    marginBottom: 12,
+                  }}>
+                    {myRole === 'impostor' ? 'Imposteur' : 'Légit'}
+                  </div>
+                  {myRole === 'legit' ? (
+                    <>
+                      <div style={{ color: '#fff', fontSize: 36, fontWeight: 900, marginBottom: 8 }}>{myWord}</div>
+                      <p style={{ color: '#c4b5fd', fontSize: 13 }}>C'est ton mot secret. Aide les légits sans le révéler.</p>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Thème : {myTheme}</div>
+                      <p style={{ color: '#fca5a5', fontSize: 13 }}>Tu n'as PAS le mot exact. Blends-toi !</p>
+                    </>
+                  )}
+                </div>
+                <button
+                  onClick={() => setRoleConfirmed(true)}
+                  style={{
+                    width: '100%',
+                    background: '#7c3aed',
+                    color: '#fff',
+                    fontWeight: 700,
+                    fontSize: 16,
+                    padding: '14px 0',
+                    borderRadius: 14,
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  J'ai mémorisé — Go !
+                </button>
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      </GameLayout>
     );
   }
 
-  // ─── ÉCRAN : Fin de partie ────────────────────────────────────────────────
+  // ─── FIN DE PARTIE ────────────────────────────────────────────────────────
   if (phase === 'end' && endResult) {
     const isWinner =
       (endResult.winner === 'legit' && myRole === 'legit') ||
       (endResult.winner === 'impostor' && myRole === 'impostor');
 
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 bg-[#0f0f14]">
-        <div className="w-full max-w-sm text-center">
-          <div className={`text-6xl font-bold mb-3 ${isWinner ? 'text-green-400' : 'text-red-400'}`}>
-            {isWinner ? 'Victoire !' : 'Défaite'}
-          </div>
-          <p className="text-gray-400 mb-1">
-            Les <span className="text-white font-bold">
-              {endResult.winner === 'legit' ? 'Légits' : 'Imposteurs'}
-            </span> ont gagné
-          </p>
-          <p className="text-gray-500 text-sm mb-8">
-            Le mot était : <span className="text-violet-400 font-bold">{endResult.word}</span>
-          </p>
+      <GameLayout>
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="w-full max-w-sm text-center">
+            <div style={{ fontSize: 64, marginBottom: 8 }}>{isWinner ? '🏆' : '💀'}</div>
+            <div style={{ color: isWinner ? '#4ade80' : '#f87171', fontSize: 42, fontWeight: 900, marginBottom: 4 }}>
+              {isWinner ? 'Victoire !' : 'Défaite'}
+            </div>
+            <p style={{ color: '#d1d5db', marginBottom: 4 }}>
+              Les <strong style={{ color: '#fff' }}>
+                {endResult.winner === 'legit' ? 'Légits' : 'Imposteurs'}
+              </strong> ont gagné
+            </p>
+            <p style={{ color: '#9ca3af', fontSize: 14, marginBottom: 28 }}>
+              Le mot était : <strong style={{ color: '#a78bfa' }}>{endResult.word}</strong>
+            </p>
 
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-8 text-left">
-            <p className="text-gray-500 text-xs mb-3 uppercase tracking-wider">Joueurs</p>
-            {endResult.players.map((p) => (
-              <div key={p.id} className="flex justify-between items-center py-2 border-b border-gray-800 last:border-0">
-                <span className="text-white">{p.pseudo}</span>
-                <span className={`text-xs font-medium px-2 py-1 rounded ${
-                  p.role === 'impostor'
-                    ? 'bg-red-900 text-red-300'
-                    : 'bg-violet-900 text-violet-300'
-                }`}>
-                  {p.role === 'impostor' ? 'Imposteur' : 'Légit'}
-                </span>
-              </div>
-            ))}
-          </div>
+            <div style={{ background: 'rgba(42,20,51,0.8)', borderRadius: 16, padding: 16, marginBottom: 28 }}>
+              {endResult.players.map((p) => (
+                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Avatar pseudo={p.pseudo} size={32} />
+                    <span style={{ color: '#fff', fontWeight: 600 }}>{p.pseudo}</span>
+                  </div>
+                  <span style={{
+                    fontSize: 12,
+                    padding: '3px 10px',
+                    borderRadius: 99,
+                    background: p.role === 'impostor' ? 'rgba(185,28,28,0.3)' : 'rgba(109,40,217,0.3)',
+                    color: p.role === 'impostor' ? '#fca5a5' : '#c4b5fd',
+                    fontWeight: 600,
+                  }}>
+                    {p.role === 'impostor' ? 'Imposteur' : 'Légit'}
+                  </span>
+                </div>
+              ))}
+            </div>
 
-          <button
-            onClick={() => navigate('/')}
-            className="w-full bg-violet-700 hover:bg-violet-500 text-white font-semibold py-4 rounded-xl transition-colors"
-          >
-            Retour à l'accueil
-          </button>
+            <button
+              onClick={() => navigate('/')}
+              style={{
+                width: '100%',
+                background: '#7c3aed',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: 16,
+                padding: '14px 0',
+                borderRadius: 14,
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              Retour à l'accueil
+            </button>
+          </div>
         </div>
-      </div>
+      </GameLayout>
     );
   }
 
-  // ─── ÉCRAN : Résultat d'élimination ──────────────────────────────────────
+  // ─── RÉSULTAT ÉLIMINATION ─────────────────────────────────────────────────
   if (phase === 'result' && eliminatedInfo) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 bg-[#0f0f14]">
-        <div className="w-full max-w-sm text-center">
-          <p className="text-gray-500 text-sm mb-6">Résultat du vote</p>
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 mb-6">
-            <p className="text-gray-400 text-sm mb-2">Éliminé</p>
-            <p className="text-white text-3xl font-bold mb-3">{eliminatedInfo.pseudo}</p>
-            <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-              eliminatedInfo.role === 'impostor'
-                ? 'bg-red-900 text-red-300'
-                : 'bg-violet-900 text-violet-300'
-            }`}>
+      <GameLayout>
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="text-center">
+            <p style={{ color: '#9ca3af', fontSize: 13, marginBottom: 20, letterSpacing: 2, textTransform: 'uppercase' }}>
+              Résultat du vote
+            </p>
+            <div className="flex justify-center mb-4">
+              <Avatar pseudo={eliminatedInfo.pseudo} size={88} />
+            </div>
+            <p style={{ color: '#fff', fontSize: 28, fontWeight: 900, marginBottom: 10 }}>
+              {eliminatedInfo.pseudo}
+            </p>
+            <span style={{
+              display: 'inline-block',
+              padding: '6px 18px',
+              borderRadius: 99,
+              fontSize: 14,
+              fontWeight: 700,
+              background: eliminatedInfo.role === 'impostor' ? 'rgba(185,28,28,0.3)' : 'rgba(109,40,217,0.3)',
+              color: eliminatedInfo.role === 'impostor' ? '#fca5a5' : '#c4b5fd',
+              marginBottom: 24,
+            }}>
               {eliminatedInfo.role === 'impostor' ? '🔴 Imposteur' : '🟣 Légit'}
             </span>
+            <p style={{ color: '#6b7280', fontSize: 14 }} className="animate-pulse">
+              Nouveau round dans quelques secondes...
+            </p>
           </div>
-          <p className="text-gray-500 text-sm animate-pulse">Nouveau round dans quelques secondes...</p>
         </div>
-      </div>
+      </GameLayout>
     );
   }
 
-  // ─── ÉCRAN : Vote ─────────────────────────────────────────────────────────
+  // ─── VOTE ─────────────────────────────────────────────────────────────────
   if (phase === 'voting') {
     return (
-      <div className="min-h-screen flex flex-col px-4 py-8 bg-[#0f0f14] max-w-lg mx-auto">
-        <div className="text-center mb-6">
-          <p className="text-gray-500 text-xs mb-1">Round {round}</p>
-          <h2 className="text-white text-2xl font-bold">Qui est l'imposteur ?</h2>
-          <p className="text-gray-400 text-sm mt-1">
-            {votesGiven} / {totalVoters} votes
-          </p>
-        </div>
-
-        {/* Récap des mots */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
-          <p className="text-gray-500 text-xs uppercase tracking-wider mb-3">Mots donnés ce round</p>
-          {clues.map((c, i) => (
-            <div key={i} className="flex justify-between items-center py-2 border-b border-gray-800 last:border-0">
-              <span className="text-gray-400 text-sm">{c.pseudo}</span>
-              <span className="text-white font-semibold">{c.word}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Boutons de vote */}
-        <p className="text-gray-500 text-xs uppercase tracking-wider mb-3">
-          {myVote ? 'Tu as voté' : 'Choisis un joueur à éliminer'}
-        </p>
-        <div className="flex flex-col gap-2 mb-4">
-          {votePlayers
-            .filter((p) => p !== user?.pseudo)
-            .map((p) => (
-              <button
-                key={p}
-                onClick={() => handleVote(p)}
-                disabled={!!myVote}
-                className={`py-4 px-5 rounded-xl font-medium transition-colors flex justify-between items-center ${
-                  myVote === p
-                    ? 'bg-violet-700 text-white border border-violet-500'
-                    : myVote
-                    ? 'bg-gray-900 text-gray-600 border border-gray-800 cursor-not-allowed'
-                    : 'bg-gray-900 hover:bg-gray-800 text-white border border-gray-700'
-                }`}
-              >
-                <span>{p}</span>
-                {voteCount[p] ? (
-                  <span className="text-xs bg-violet-900 text-violet-300 px-2 py-1 rounded">
-                    {voteCount[p]} vote{voteCount[p] > 1 ? 's' : ''}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-        </div>
-
-        {!myVote && (
-          <p className="text-gray-600 text-xs text-center">
-            Tu ne peux pas voter contre toi-même
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  // ─── ÉCRAN : Jeu principal ────────────────────────────────────────────────
-  return (
-    <div className="min-h-screen flex flex-col px-4 py-6 bg-[#0f0f14] max-w-lg mx-auto">
-
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <span className="text-gray-600 text-sm">Round {round}</span>
-        <span className="text-gray-600 text-sm">Tour {turnIndex + 1} / {totalTurns}</span>
-      </div>
-
-      {/* Mon rôle */}
-      <div className={`rounded-xl p-4 mb-6 border ${
-        myRole === 'impostor'
-          ? 'bg-red-950 border-red-800'
-          : 'bg-violet-950 border-violet-800'
-      }`}>
-        <div className="flex justify-between items-center">
-          <div>
-            <p className="text-xs uppercase tracking-wider mb-1 text-gray-400">Mon rôle</p>
-            {myRole === 'legit' ? (
-              <p className="text-white font-bold text-lg">{myWord}</p>
-            ) : (
-              <p className="text-white font-bold text-lg">Thème : {myTheme}</p>
-            )}
+      <GameLayout>
+        <div className="flex-1 flex flex-col max-w-lg mx-auto w-full px-4 py-6">
+          <div className="text-center mb-5">
+            <p style={{ color: '#a78bfa', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 6 }}>
+              Round {round}
+            </p>
+            <h2 style={{ color: '#fff', fontSize: 26, fontWeight: 900, marginBottom: 4 }}>
+              Qui est l'imposteur ?
+            </h2>
+            <p style={{ color: '#9ca3af', fontSize: 13 }}>
+              {votesGiven} / {totalVoters} votes
+            </p>
           </div>
-          <span className={`text-xs font-medium px-3 py-1 rounded-full ${
-            myRole === 'impostor'
-              ? 'bg-red-900 text-red-300'
-              : 'bg-violet-900 text-violet-300'
-          }`}>
-            {myRole === 'impostor' ? 'Imposteur' : 'Légit'}
-          </span>
-        </div>
-      </div>
 
-      {/* Joueur actuel + timer */}
-      <div className="text-center mb-6">
-        {isMyTurn ? (
-          <div className="bg-violet-900 border border-violet-700 rounded-xl p-4 mb-3">
-            <p className="text-violet-200 font-bold text-lg">🎯 C'est ton tour !</p>
-            <p className="text-violet-300 text-sm">Donne un mot en rapport avec le thème</p>
-          </div>
-        ) : (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-3">
-            <p className="text-gray-400 text-sm mb-1">Tour de</p>
-            <p className="text-white font-bold text-xl">{currentPlayer}</p>
-          </div>
-        )}
-
-        <div className={`text-6xl font-mono font-bold ${
-          timeLeft <= 5 ? 'text-red-400' : timeLeft <= 10 ? 'text-orange-400' : 'text-white'
-        }`}>
-          {timeLeft}
-        </div>
-        <p className="text-gray-600 text-xs mt-1">secondes</p>
-      </div>
-
-      {/* Input */}
-      {isMyTurn && (
-        <form onSubmit={handleSubmitClue} className="flex gap-2 mb-6">
-          <input
-            ref={inputRef}
-            type="text"
-            value={clueInput}
-            onChange={(e) => setClueInput(e.target.value)}
-            placeholder="Tape ton mot..."
-            maxLength={50}
-            autoComplete="off"
-            className="flex-1 bg-gray-900 border border-violet-600 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-violet-400 text-lg"
-          />
-          <button
-            type="submit"
-            disabled={!clueInput.trim()}
-            className="bg-violet-700 hover:bg-violet-500 disabled:opacity-40 text-white font-bold px-6 rounded-xl transition-colors"
-          >
-            ✓
-          </button>
-        </form>
-      )}
-
-      {/* Liste des mots */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex-1">
-        <p className="text-gray-500 text-xs uppercase tracking-wider mb-3">
-          Mots donnés ({clues.length}/{totalTurns})
-        </p>
-        {clues.length === 0 ? (
-          <p className="text-gray-700 text-sm text-center py-4">Aucun mot encore...</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {clues.map((c, i) => (
-              <div
-                key={i}
-                className={`flex justify-between items-center py-2 px-3 rounded-lg ${
-                  c.pseudo === user?.pseudo ? 'bg-gray-800' : ''
-                }`}
-              >
-                <span className={`text-sm ${c.pseudo === user?.pseudo ? 'text-violet-400' : 'text-gray-400'}`}>
-                  {c.pseudo}
-                </span>
-                <span className="text-white font-semibold">{c.word}</span>
+          {/* Avatars joueurs */}
+          <div className="flex justify-center gap-3 mb-5 flex-wrap">
+            {votePlayers.map((p) => (
+              <div key={p} style={{ textAlign: 'center', opacity: myVote === p ? 1 : 0.7 }}>
+                <Avatar pseudo={p} size={44} />
               </div>
             ))}
           </div>
+
+          {/* Récap mots */}
+          <div style={{ background: 'rgba(42,20,51,0.7)', borderRadius: 14, padding: 14, marginBottom: 16, border: '1px solid rgba(139,92,246,0.15)' }}>
+            <p style={{ color: '#6b7280', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10 }}>
+              Mots donnés
+            </p>
+            {clues.map((c, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <span style={{ color: '#9ca3af', fontSize: 14 }}>{c.pseudo}</span>
+                <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{c.word}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Boutons vote */}
+          <div className="flex flex-col gap-2">
+            {votePlayers
+              .filter((p) => p !== user?.pseudo)
+              .map((p) => (
+                <button
+                  key={p}
+                  onClick={() => handleVote(p)}
+                  disabled={!!myVote}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '14px 18px',
+                    borderRadius: 14,
+                    border: myVote === p ? '2px solid #8b5cf6' : '1px solid rgba(255,255,255,0.08)',
+                    background: myVote === p ? 'rgba(139,92,246,0.25)' : 'rgba(42,20,51,0.7)',
+                    color: myVote && myVote !== p ? '#4b5563' : '#fff',
+                    fontWeight: 700,
+                    fontSize: 16,
+                    cursor: myVote ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <Avatar pseudo={p} size={32} />
+                    <span>{p}</span>
+                  </div>
+                  {voteCount[p] ? (
+                    <span style={{ fontSize: 12, background: 'rgba(139,92,246,0.3)', color: '#c4b5fd', padding: '3px 10px', borderRadius: 99 }}>
+                      {voteCount[p]} vote{voteCount[p] > 1 ? 's' : ''}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+          </div>
+
+          {!myVote && (
+            <p style={{ color: '#4b5563', fontSize: 12, textAlign: 'center', marginTop: 12 }}>
+              Tu ne peux pas voter pour toi-même
+            </p>
+          )}
+        </div>
+      </GameLayout>
+    );
+  }
+
+  // ─── JEU PRINCIPAL ────────────────────────────────────────────────────────
+  // Construire la liste des joueurs depuis le turnOrder
+  const turnOrderPseudos = allPlayers.length > 0
+    ? allPlayers
+    : clues.map((c) => c.pseudo).concat(
+        currentPlayer && !clues.find((c) => c.pseudo === currentPlayer) ? [currentPlayer] : []
+      );
+
+  return (
+    <GameLayout>
+      {/* Header */}
+      <TurnHeader
+        currentPlayer={currentPlayer}
+        isMyTurn={isMyTurn}
+        timeLeft={timeLeft}
+        round={round}
+      />
+
+      {/* Zone joueurs */}
+      <div className="flex-1 flex flex-col justify-center">
+        <PlayersRow
+          players={turnOrderPseudos.length > 0 ? turnOrderPseudos : (currentPlayer ? [currentPlayer] : [])}
+          currentPlayer={currentPlayer}
+          myPseudo={user?.pseudo}
+          clues={clues}
+          eliminated={eliminated}
+        />
+      </div>
+
+      {/* Zone mon rôle + input */}
+      <div style={{ padding: '0 16px 16px' }}>
+        {/* Rappel rôle */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'rgba(42,20,51,0.8)',
+          border: myRole === 'impostor' ? '1px solid rgba(185,28,28,0.4)' : '1px solid rgba(139,92,246,0.25)',
+          borderRadius: 12,
+          padding: '10px 16px',
+          marginBottom: 12,
+        }}>
+          <div>
+            <span style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>
+              {myRole === 'impostor' ? 'Imposteur' : 'Légit'}
+            </span>
+            <p style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>
+              {myRole === 'legit' ? myWord : `Thème : ${myTheme}`}
+            </p>
+          </div>
+          <span style={{ fontSize: 22 }}>{myRole === 'impostor' ? '🔴' : '🟣'}</span>
+        </div>
+
+        {/* Input si c'est mon tour */}
+        {isMyTurn && (
+          <form onSubmit={handleSubmitClue} style={{ display: 'flex', gap: 10 }}>
+            <input
+              ref={inputRef}
+              type="text"
+              value={clueInput}
+              onChange={(e) => setClueInput(e.target.value)}
+              placeholder="Tape ton mot..."
+              maxLength={50}
+              autoComplete="off"
+              style={{
+                flex: 1,
+                background: 'rgba(42,20,51,0.9)',
+                border: '2px solid #7c3aed',
+                borderRadius: 14,
+                padding: '14px 18px',
+                color: '#fff',
+                fontSize: 18,
+                fontWeight: 600,
+                outline: 'none',
+              }}
+            />
+            <button
+              type="submit"
+              disabled={!clueInput.trim()}
+              style={{
+                background: clueInput.trim() ? '#7c3aed' : 'rgba(124,58,237,0.3)',
+                color: '#fff',
+                fontWeight: 800,
+                fontSize: 20,
+                padding: '0 22px',
+                borderRadius: 14,
+                border: 'none',
+                cursor: clueInput.trim() ? 'pointer' : 'not-allowed',
+                transition: 'background 0.15s',
+              }}
+            >
+              ✓
+            </button>
+          </form>
+        )}
+
+        {!isMyTurn && phase === 'playing' && (
+          <div style={{
+            background: 'rgba(42,20,51,0.5)',
+            borderRadius: 12,
+            padding: '12px 16px',
+            textAlign: 'center',
+            color: '#6b7280',
+            fontSize: 14,
+          }}>
+            En attente de <strong style={{ color: '#a78bfa' }}>{currentPlayer}</strong>...
+          </div>
         )}
       </div>
-    </div>
+
+      {/* Navigation bas */}
+      <CarouselNavigation total={totalTurns || 1} current={turnIndex} />
+    </GameLayout>
   );
 }
